@@ -9,7 +9,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn import cross_validation
 from sklearn.learning_curve import learning_curve
-
+import numpy as np
+import pandas as pd
+from sklearn_pandas import DataFrameMapper
+from sklearn import preprocessing
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.grid_search import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn import svm
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
 def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
                         n_jobs=1, train_sizes=np.linspace(.1, 1.0, 5)):
@@ -72,13 +81,34 @@ def plot_learning_curve(estimator, title, X, y, ylim=None, cv=None,
 
 
 
-import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn import preprocessing
-from sklearn import svm
+def load_data(path):
+    return pd.io.parsers.read_csv(path)
 
-X = np.loadtxt("train.csv", delimiter=",")
-y = np.loadtxt("trainLabels.csv", delimiter=",")
+
+def preprocess_train(train):
+    train_y = train.Survived.values
+
+    mapper = DataFrameMapper([
+        ('Pclass', preprocessing.LabelBinarizer()),
+        ('Sex', preprocessing.LabelBinarizer()),
+        ('Age', None),
+        ('SibSp', preprocessing.Binarizer()),
+        ('Parch', preprocessing.Binarizer()),
+        ('Embarked', preprocessing.LabelBinarizer()),
+        ('Fare', None),
+    ])
+    train_X = mapper.fit_transform(train)
+
+    imputer = preprocessing.Imputer(strategy='mean')
+    train_X = imputer.fit_transform(train_X)
+
+    return train_X, train_y, mapper, imputer
+
+
+
+
+train = load_data("titanic/train.csv")
+X, y, mapper, imputer = preprocess_train(train)
 
 scaler = preprocessing.StandardScaler().fit(X)
 X = scaler.transform(X)
@@ -88,9 +118,11 @@ X = scaler.transform(X)
 cv = cross_validation.ShuffleSplit(X.shape[0], n_iter=5, test_size=0.2, random_state=0)
 
 
-#estimator = LogisticRegression()
-estimator = svm.SVC(C=400, gamma=0.01, kernel='rbf')
+normalization = preprocessing.StandardScaler()
+pca = PCA()
+svc = svm.SVC(C=1, gamma=0.0316227766016837911) #mean: 0.82043, std: 0.00159, params: {'svc__gamma': 0.031622776601683791, 'pca__n_components': 9, 'svc__C': 1.0}
 
+estimator = Pipeline(steps=[('normalization', normalization), ('pca', pca), ('svc', svc)])
 
 title = "Learning Curves"
 plot_learning_curve(estimator, title, X, y, ylim=(0.7, 1.01), cv=cv, n_jobs=4)

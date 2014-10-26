@@ -1,3 +1,5 @@
+''' Code for Kaggle competition https://www.kaggle.com/c/data-science-london-scikit-learn '''
+
 import numpy as np
 from sklearn import preprocessing
 from sklearn.grid_search import GridSearchCV
@@ -7,15 +9,17 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 
-def plot_data(X):
+def plot_data(X, y):
     pca = PCA(n_components=2)
     pca.fit(X)
     X_pca = pca.fit_transform(X)
     plt.scatter(X_pca[:, 0], X_pca[:,1], c=y)
     plt.show()
 
+
 def plot_error_by_param(clf, param):
     pass
+
 
 def load_data():
     X = np.loadtxt("train.csv", delimiter=",")
@@ -23,16 +27,19 @@ def load_data():
     X_test = np.loadtxt("test.csv", delimiter=",")
     return X, y, X_test
 
+
 def normalize(X, X_test):
     scaler = preprocessing.StandardScaler().fit(X)
     X = scaler.transform(X)
     X_test = scaler.transform(X_test)
     return X, X_test
 
+
 def save_result(y_test, file_name):
     y_test_labelled = np.c_[[i for i in range(1, 9001)], y_test]
     y_test_labelled = y_test_labelled.astype(int)
     np.savetxt(file_name + '.csv', y_test_labelled, delimiter=",", header="Id,Solution", fmt="%d") #Need to delete # for column labels
+
 
 def create_estimator(X, y):
     pca = PCA()
@@ -52,18 +59,19 @@ def create_estimator(X, y):
     clf.fit(X, y)
     return clf
 
-X, y, X_test = load_data()
 
-# Normalization gets worse results ?!?
-# X, X_test = normalize(X, X_test)
+def main():
+    X, y, X_test = load_data()
 
-estimator = create_estimator(X, y)
+    # Normalization gets worse results
+    # X, X_test = normalize(X, X_test)
 
-best_score = estimator.best_score_ #  0.943
-print 'Best score ', best_score
-print 'Best estimator '
-print estimator.best_estimator_
+    estimator = create_estimator(X, y)
 
-y_test = estimator.predict(X_test)
-save_result(y_test, 'estimation_svc_' + str(best_score))
+    best_score = estimator.best_score_ #  0.943
+    y_test = estimator.predict(X_test)
+    save_result(y_test, 'estimation_svc_' + str(best_score))
 
+
+if __name__ == '__main__':
+    main()
