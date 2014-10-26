@@ -12,6 +12,9 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 
+titles = {'Mr.', 'Miss.', 'Mrs.', 'Master.', 'Dr.', 'Rev.'}
+
+
 def load_data(path):
     return pd.io.parsers.read_csv(path)
 
@@ -20,25 +23,23 @@ def get_age_by_class(data):
     return [(cl, np.median((data.Age[(data.Pclass == cl) & (data.Age.notnull())]))) for cl in [1, 2, 3]]
 
 
-def set_missing_age(data, age_by_class):
+def get_age_by_title(data):
+    return [(title, np.median((data.Age[(data.Title == title) & (data.Age.notnull())]))) for title in titles]
+
+
+def set_missing_age_by_class(data, age_by_class):
     for cl, age in age_by_class:
         data.Age[(data.Pclass == cl) & (data.Age.isnull())] = age
 
 
-#Pull out the department from their ticket number. If this isn't present assume it to be zero
-def set_department(ticket):
-    dept_name = re.sub(r"$\d+\W+|\b\d+\b|\W+\d+$", "", ticket)
-    if len(dept_name) == 0:
-        dept_name = None
-    deptCode = ord(dept_name[0]) + len(deptName)
-    return deptCode
+def set_missing_age_by_title(data, age_by_title):
+    for title, age in age_by_title:
+        data.Age[(data.Title == title) & (data.Age.isnull())] = age
 
 
-#Pull out the title alone - Rev, Dr, Mr etc
 def set_title(data):
-
+    ''' Extract passanger title from name (Rev, Dr, Mr etc) '''
     def get_title(name):
-        titles = {'Mr.', 'Miss.', 'Mrs.', 'Master.', 'Dr.', 'Rev.'}
         for word in name.split():
             if word in titles:
                 return word
@@ -47,13 +48,40 @@ def set_title(data):
     data['Title'] = map(get_title, data.Name)
 
 
-def preprocess_train(train):
-    age_by_class = get_age_by_class(train)
-    set_missing_age(train, age_by_class)
-    set_title(train)
+def set_fare_per_person(data):
+    data['FarePerPerson'] = data.Fare/data.FamilySize
 
+
+def set_family_size(data):
+    data['FamilySize'] = data.SibSp + data.Pclass
+
+
+def set_age_class(data):
+    data['AgeClass'] = data.Age + data.Pclass
+
+
+def set_sex_class(data):
+    data['SexClass'] = ((data.Sex == 'female') + 1) * data.Pclass # Sex encoded as 1 or 2
+
+
+def preprocess_data(data, age_by_col=None):
+    set_title(data)
+    set_family_size(data)
+    set_fare_per_person(data)
+    set_sex_class(data)
+
+    if not age_by_col:
+        age_by_col = get_age_by_title(data)
+
+    set_missing_age_by_title(data, age_by_col)
+    set_age_class(data)
+    return age_by_col
+
+
+def preprocess_train(train):
     train_y = train.Survived.values
-    train['FamilySize'] = train.SibSp + train.Pclass
+
+    age_by_col = preprocess_data(train)
     mapper = DataFrameMapper([
         ('Pclass', preprocessing.LabelBinarizer()),
         ('Sex', preprocessing.LabelBinarizer()),
@@ -64,20 +92,20 @@ def preprocess_train(train):
         ('Fare', None),
         ('FamilySize', None),
         ('Title', preprocessing.LabelBinarizer()),
+        ('FarePerPerson', None),
+        ('AgeClass', None),
+        ('SexClass', None)
     ])
 
     train_X = mapper.fit_transform(train)
     imputer = preprocessing.Imputer(strategy='mean')
     train_X = imputer.fit_transform(train_X)
 
-    return train_X, train_y, mapper, imputer, age_by_class
+    return train_X, train_y, mapper, imputer, age_by_col
 
 
-def preprocess_test(test, mapper, imputer, age_by_class):
-    set_missing_age(test, age_by_class)
-    set_title(test)
-
-    test['FamilySize'] = test.SibSp + test.Pclass
+def preprocess_test(test, mapper, imputer, age_by_col):
+    preprocess_data(test, age_by_col)
     test_X = mapper.transform(test)
     test_X = imputer.transform(test_X)
     return test_X
@@ -86,7 +114,7 @@ def preprocess_test(test, mapper, imputer, age_by_class):
 def save_result(test, y, file_name):
     y_test_labelled = np.c_[test.PassengerId.values, y]
     y_test_labelled = y_test_labelled.astype(int)
-    np.savetxt(file_name + '.csv', y_test_labelled, delimiter=",", header="PassengerId,Survived", fmt="%d") #Need to delete # for column labels
+    np.savetxt(file_name + '.csv', y_test_labelled, delimiter=",", header="PassengerId,Survived", fmt="%d") # Need to delete # for column labels
 
 
 def plot_data(X, y):
@@ -119,7 +147,7 @@ def create_estimator_svc(X, y):
                        n_jobs=4,
                        cv=10)
 
-    clf.fit(X, y) #mean: 0.8327 (Kaggle 0.79904)
+    clf.fit(X, y) #mean: 0.836 (Kaggle 0.80861)
     return clf
 
 
@@ -148,14 +176,14 @@ def create_estimator_forest(X, y):
 
 def main():
     train = load_data("train.csv")
-    train_X, train_y, mapper, imputer, age_by_class = preprocess_train(train)
+    train_X, train_y, mapper, imputer, age_by_col = preprocess_train(train)
 
     estimator = create_estimator_svc(train_X, train_y)
     best_score = estimator.best_score_
     import ipdb; ipdb.set_trace()
 
     test = load_data("test.csv")
-    test_X = preprocess_test(test, mapper, imputer, age_by_class)
+    test_X = preprocess_test(test, mapper, imputer, age_by_col)
     test_y = estimator.predict(test_X)
     save_result(test, test_y, "estimation_svc_" + str(best_score))
 
