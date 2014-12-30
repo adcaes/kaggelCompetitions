@@ -12,6 +12,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 
 
+# Titles with more than 10 samples in the train set
 titles = {'Mr.', 'Miss.', 'Mrs.', 'Master.', 'Dr.', 'Rev.'}
 
 
@@ -180,7 +181,6 @@ def main():
 
     estimator = create_estimator_svc(train_X, train_y)
     best_score = estimator.best_score_
-    import ipdb; ipdb.set_trace()
 
     test = load_data("test.csv")
     test_X = preprocess_test(test, mapper, imputer, age_by_col)
