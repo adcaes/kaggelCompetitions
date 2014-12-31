@@ -1,5 +1,4 @@
-''' Prediction for Kagle competition http://www.kaggle.com/c/bike-sharing-demand'''
-# Use all feautres except partial counts and add hour and maybe month
+''' Prediction for Kaggle competition http://www.kaggle.com/c/bike-sharing-demand '''
 
 import pandas as pd
 from sklearn_pandas import DataFrameMapper
@@ -8,16 +7,26 @@ from sklearn.grid_search import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.decomposition import PCA
 from sklearn import tree, ensemble, linear_model, svm
+from sklearn.metrics import make_scorer
+import numpy as np
+
+
+scorer = None
+
 
 def load_data(path):
-    return pd.io.parsers.read_csv(path)
+    return pd.read_csv(path)
 
 
 def preprocess_data(data):
     data['datetime'] = pd.to_datetime(data['datetime'])
     data['hour'] = map(lambda r: r.hour, data.datetime)
     data['weekday'] = map(lambda r: r.weekday(), data.datetime)
+    data['month'] = map(lambda r: r.month, data.datetime)
     data['is_sunday'] = map(lambda r: r == 6, data.weekday)
+    data['is_night'] = map(lambda r: 1 if 0 >= r <= 6 else 0, data.hour)
+    data['bad_weather'] = map(lambda r: r > 2, data.weather)
+    data['year'] = map(lambda r: r.year, data.datetime)
 
 
 def preprocess_train(train):
@@ -39,6 +48,8 @@ def preprocess_train(train):
         ('windspeed', None),
         ('weekday', None),
         ('is_sunday', None),
+        ('bad_weather', None),
+        ('year', None),
     ])
 
     train_X = mapper.fit_transform(train)
@@ -49,6 +60,16 @@ def preprocess_test(test, mapper):
     preprocess_data(test)
     test_X = mapper.transform(test)
     return test_X
+
+
+def rmsele(actual, pred):
+    squared_errors = (np.log(pred + 1) - np.log(actual + 1)) ** 2
+    mean_squared = np.sum(squared_errors) / len(squared_errors)
+    return np.sqrt(mean_squared)
+
+
+def get_rmsele_scorer():
+    return make_scorer(rmsele, greater_is_better=False)
 
 
 def estimate_pca(X):
@@ -99,13 +120,32 @@ def create_estimator_random_forest(X, y):
     normalization = preprocessing.StandardScaler()
     rforest = ensemble.RandomForestRegressor()
 
-    n_estimators = [5, 10, 20]
+    n_estimators = [5, 10, 20, 25]
     max_depth = [None, 5, 10, 15]
 
     pipe = Pipeline(steps=[('normalization', normalization), ('rforest', rforest)])
     clf = GridSearchCV(pipe,
                        dict(rforest__n_estimators=n_estimators,
                             rforest__max_depth=max_depth),
+                       n_jobs=4,
+                       cv=3,
+                       scoring=scorer)
+
+    clf.fit(X, y)
+    return clf
+
+
+def create_estimator_gbm(X, y):
+    normalization = preprocessing.StandardScaler()
+    gbm = ensemble.GradientBoostingRegressor()
+
+    n_estimators = [5, 10, 20, 25]
+    max_depth = [None, 5, 10, 15]
+
+    pipe = Pipeline(steps=[('normalization', normalization), ('gbm', gbm)])
+    clf = GridSearchCV(pipe,
+                       dict(gbm__n_estimators=n_estimators,
+                            gbm__max_depth=max_depth),
                        n_jobs=4,
                        cv=3)
 
@@ -140,6 +180,9 @@ def main():
     train = load_data("train.csv")
     train_X, train_y, train_y1, train_y2, mapper = preprocess_train(train)
 
+    global scorer
+    scorer = get_rmsele_scorer()
+
     estimator_y1 = create_estimator_random_forest(train_X, train_y1)
     best_score_y1 = estimator_y1.best_score_
 
@@ -156,6 +199,6 @@ def main():
     test_y_pos = map(lambda v: 0 if v < 0 else v, test_y)
     save_result(test, test_y_pos, "estimation_rforest_y1y2_%f_%f" % (best_score_y1, best_score_y2))
 
+
 if __name__ == '__main__':
     main()
-
